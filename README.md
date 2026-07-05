@@ -349,7 +349,6 @@ print("[+] SQL Injection confirmed!" if 'error' in response.text else "[-]")
 
 ## 🧪 Testing & Troubleshooting
 
-###常见问题
 
 **1. Login gagal "Not Authorized"**
 - Pastikan Telegram ID ada di `ALLOWED_USERS`
