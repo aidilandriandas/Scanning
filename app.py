@@ -73,15 +73,21 @@ def login():
         telegram_id = request.form.get('telegram_id')
         username = request.form.get('username', f'user_{telegram_id}')
         
+        # Check if user is in allowed list from config
+        is_allowed = str(telegram_id) in config.ALLOWED_USERS or '' in config.ALLOWED_USERS
+        
+        if config.WHITELIST_ONLY and not is_allowed:
+            return render_template('login.html', error='You are not authorized to use this system')
+        
         # Check if user exists in DB
         user_record = User.query.filter_by(telegram_id=str(telegram_id)).first()
         
         if not user_record:
-            # Create new user
+            # Create new user with whitelisted status based on config check
             user_record = User(
                 telegram_id=str(telegram_id),
                 username=username,
-                is_whitelisted=not config.WHITELIST_ONLY  # Auto-whitelist if not restricted
+                is_whitelisted=is_allowed
             )
             db.session.add(user_record)
             db.session.commit()
@@ -94,10 +100,11 @@ def login():
             )
             db.session.add(audit_log)
             db.session.commit()
-        
-        # Check whitelist
-        if config.WHITELIST_ONLY and not user_record.is_whitelisted:
-            return render_template('login.html', error='You are not authorized to use this system')
+        else:
+            # Update whitelist status if config changed
+            if user_record.is_whitelisted != is_allowed:
+                user_record.is_whitelisted = is_allowed
+                db.session.commit()
         
         user = TelegramUser(
             telegram_id=user_record.telegram_id,
