@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Vulnerability Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🔒 Vulnerability Scanner</div>
+        <div class="nav-user">
+            <span>Welcome, {{ user.username }}</span>
+            <a href="{{ url_for('logout') }}" class="btn btn-small">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- New Scan Section -->
+        <section class="card">
+            <h2>🚀 Start New Scan</h2>
+            <form id="scanForm" class="scan-form">
+                <div class="form-row">
+                    <div class="form-group flex-grow">
+                        <label for="targetUrl">Target URL</label>
+                        <input type="url" id="targetUrl" required 
+                               placeholder="https://example.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="scanMode">Scan Mode</label>
+                        <select id="scanMode">
+                            <option value="safe">Safe Mode (Recommended)</option>
+                            <option value="deep">Deep Mode (Advanced)</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Start Scan</button>
+                </div>
+            </form>
+            
+            <div id="scanProgress" class="scan-progress hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="progressText">Initializing...</p>
+            </div>
+        </section>
+
+        <!-- Recent Scans Section -->
+        <section class="card">
+            <h2>📊 Recent Scans</h2>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>Target</th>
+                            <th>Mode</th>
+                            <th>Status</th>
+                            <th>Vulnerabilities</th>
+                            <th>Risk Score</th>
+                            <th>Started</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scansTableBody">
+                        {% for scan in recent_scans %}
+                        <tr>
+                            <td><code>{{ scan.id[:8] }}...</code></td>
+                            <td>{{ scan.target_url }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'warning' if scan.scan_mode == 'deep' else 'success' }}">
+                                    {{ scan.scan_mode }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge badge-{{ 
+                                    'success' if scan.status == 'COMPLETED' 
+                                    else 'error' if scan.status == 'FAILED'
+                                    else 'warning' if scan.status == 'RUNNING'
+                                    else 'info'
+                                }}">
+                                    {{ scan.status }}
+                                </span>
+                            </td>
+                            <td>{{ scan.vulnerability_count }}</td>
+                            <td>
+                                <span class="risk-score risk-{{ 
+                                    'critical' if scan.risk_score >= 9 
+                                    else 'high' if scan.risk_score >= 7
+                                    else 'medium' if scan.risk_score >= 4
+                                    else 'low'
+                                }}">
+                                    {{ scan.risk_score }}/10
+                                </span>
+                            </td>
+                            <td>{{ scan.started_at.strftime('%Y-%m-%d %H:%M') if scan.started_at else '-' }}</td>
+                            <td>
+                                {% if scan.status == 'COMPLETED' %}
+                                <button class="btn btn-small btn-view" onclick="viewResults('{{ scan.id }}')">
+                                    View Results
+                                </button>
+                                {% elif scan.status == 'RUNNING' %}
+                                <button class="btn btn-small btn-monitor" onclick="monitorScan('{{ scan.id }}')">
+                                    Monitor
+                                </button>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div id="noScans" class="text-center hidden">
+                <p>No scans yet. Start your first scan above!</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Results Modal -->
+    <div id="resultsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Scan Results</h3>
+                <button class="btn-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Results will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
