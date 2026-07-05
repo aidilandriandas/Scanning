@@ -247,10 +247,9 @@ def create_sample_data():
 
 if __name__ == '__main__':
     # Initialize database
-    init_db(app)
-    
-    # Create sample data
-    create_sample_data()
+    with app.app_context():
+        db.create_all()
+        create_sample_data()
     
     # Run the application
     logger.info(f"Starting dashboard on {config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}")
