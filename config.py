@@ -10,9 +10,14 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 # Database Configuration (SQLite for simplicity, change to PostgreSQL for production)
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///scanner.db')
 
-# Security Settings
-MAX_SCAN_TIMEOUT = 300  # Maximum scan timeout in seconds
-SAFE_MODE_DEFAULT = True  # Default to safe mode scanning
+# Security & Performance Settings
+MAX_SCAN_TIMEOUT = 300  # Maximum scan duration in seconds
+SAFE_MODE_DEFAULT = True  # Default to safe mode to prevent server overload
+SCAN_DELAY = 0.5  # Delay in seconds between requests (Rate Limiting)
+MAX_REQUESTS_PER_SECOND = 2  # Cap requests per second
+
+# False Positive Management
+AUTO_IGNORE_FALSE_POSITIVES = True
 WHITELIST_ONLY = True  # Only allow whitelisted users to use the bot
 
 # CVSS Scoring Configuration
