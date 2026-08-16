@@ -141,6 +141,7 @@ def start_scan():
     data = request.get_json()
     target_url = data.get('url')
     scan_mode = data.get('mode', 'safe')
+    use_external = data.get('use_external_scanners', False)
     
     if not target_url:
         return jsonify({'error': 'Target URL is required'}), 400
@@ -159,19 +160,20 @@ def start_scan():
         user_id=user_record.id,
         action='SCAN_STARTED',
         target=target_url,
-        details={'mode': scan_mode},
+        details={'mode': scan_mode, 'use_external_scanners': use_external},
         ip_address=request.remote_addr
     )
     db.session.add(audit_log)
     db.session.commit()
     
     # Start Celery task
-    task = run_scan_task.delay(target_url, user_record.id, scan_mode)
+    task = run_scan_task.delay(target_url, user_record.id, scan_mode, use_external)
     
     return jsonify({
         'job_id': task.id,
         'status': 'started',
-        'message': f'Scan started for {target_url}'
+        'message': f'Scan started for {target_url}',
+        'external_scanners': use_external
     })
 
 
@@ -234,6 +236,36 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     logger.info('Client disconnected from WebSocket')
+
+
+@socketio.on('subscribe_scan')
+def handle_subscribe_scan(data):
+    """Subscribe to real-time scan progress updates"""
+    job_id = data.get('job_id')
+    if job_id:
+        # Join room for this scan job
+        from flask_socketio import join_room
+        join_room(f'scan_{job_id}')
+        emit('subscribed', {'job_id': job_id})
+        logger.info(f'Client subscribed to scan {job_id}')
+
+
+@socketio.on('unsubscribe_scan')
+def handle_unsubscribe_scan(data):
+    """Unsubscribe from scan progress updates"""
+    job_id = data.get('job_id')
+    if job_id:
+        from flask_socketio import leave_room
+        leave_room(f'scan_{job_id}')
+        emit('unsubscribed', {'job_id': job_id})
+
+
+def broadcast_scan_progress(job_id, progress_data):
+    """Broadcast scan progress to all subscribed clients"""
+    socketio.emit('scan_progress', {
+        'job_id': job_id,
+        'progress': progress_data
+    }, room=f'scan_{job_id}')
 
 
 def create_sample_data():

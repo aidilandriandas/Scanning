@@ -48,6 +48,10 @@ class ScanJob(db.Model):
     risk_score = db.Column(db.Float, default=0.0)
     error_message = db.Column(db.Text)
     
+    # External scanner fields
+    external_scanners_used = db.Column(db.JSON, default=list)  # List of external scanners used
+    realtime_log = db.Column(db.JSON, default=list)  # Real-time scanning log
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -62,6 +66,8 @@ class ScanJob(db.Model):
             'vulnerability_count': self.vulnerability_count,
             'risk_score': self.risk_score,
             'error_message': self.error_message,
+            'external_scanners_used': self.external_scanners_used or [],
+            'realtime_log': self.realtime_log or [],
             'summary': self.get_summary()
         }
     
