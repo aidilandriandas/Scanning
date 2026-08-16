@@ -52,6 +52,12 @@ class ScanJob(db.Model):
     external_scanners_used = db.Column(db.JSON, default=list)  # List of external scanners used
     realtime_log = db.Column(db.JSON, default=list)  # Real-time scanning log
     
+    # Smart validation & compliance fields
+    validation_status = db.Column(db.String(20), default='pending')  # pending, validated, false_positive
+    confidence_score = db.Column(db.Float, default=0.0)  # 0-100 confidence score
+    compliance_tags = db.Column(db.JSON, default=list)  # OWASP, CWE, PCI-DSS, ISO tags
+    false_positive_flags = db.Column(db.JSON, default=list)  # List of flagged false positives
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -68,6 +74,10 @@ class ScanJob(db.Model):
             'error_message': self.error_message,
             'external_scanners_used': self.external_scanners_used or [],
             'realtime_log': self.realtime_log or [],
+            'validation_status': self.validation_status,
+            'confidence_score': self.confidence_score,
+            'compliance_tags': self.compliance_tags or [],
+            'false_positive_flags': self.false_positive_flags or [],
             'summary': self.get_summary()
         }
     

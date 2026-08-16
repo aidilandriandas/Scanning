@@ -260,6 +260,73 @@ def handle_unsubscribe_scan(data):
         emit('unsubscribed', {'job_id': job_id})
 
 
+@app.route('/api/report/<job_id>', methods=['GET'])
+@login_required
+def generate_report(job_id):
+    """Generate PDF/HTML report for a completed scan"""
+    from modules.reports.generator import ReportGenerator
+    
+    job = ScanJob.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Scan job not found'}), 404
+    
+    report_type = request.args.get('type', 'full')
+    format_type = request.args.get('format', 'html')  # html or pdf
+    
+    try:
+        generator = ReportGenerator(job)
+        
+        if format_type == 'pdf':
+            output_path = f'/tmp/report_{job_id}.pdf'
+            generator.generate_pdf_report(output_path, report_type)
+            return jsonify({
+                'success': True,
+                'message': 'PDF report generated',
+                'download_url': f'/static/reports/report_{job_id}.pdf'
+            })
+        else:
+            output_path = f'/workspace/static/reports/report_{job_id}.html'
+            generator.generate_html_report(output_path, report_type)
+            return jsonify({
+                'success': True,
+                'message': 'HTML report generated',
+                'view_url': f'/static/reports/report_{job_id}.html'
+            })
+    except Exception as e:
+        logger.error(f'Error generating report: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mark-false-positive', methods=['POST'])
+@login_required
+def mark_false_positive():
+    """Mark a vulnerability as false positive"""
+    data = request.json
+    job_id = data.get('job_id')
+    vuln_index = data.get('vuln_index')
+    
+    job = ScanJob.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Scan job not found'}), 404
+    
+    if not job.false_positive_flags:
+        job.false_positive_flags = []
+    
+    job.false_positive_flags.append({
+        'vuln_index': vuln_index,
+        'marked_by': current_user.id,
+        'marked_at': datetime.utcnow().isoformat(),
+        'reason': data.get('reason', 'User marked as false positive')
+    })
+    
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Vulnerability marked as false positive'
+    })
+
+
 def broadcast_scan_progress(job_id, progress_data):
     """Broadcast scan progress to all subscribed clients"""
     socketio.emit('scan_progress', {

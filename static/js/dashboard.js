@@ -191,6 +191,11 @@ async function viewResults(jobId) {
 function displayResults(results) {
     const modalBody = document.getElementById('modalBody');
     
+    // Add compliance and validation summary
+    const complianceTags = results.compliance_tags || [];
+    const validationStatus = results.validation_status || 'pending';
+    const confidenceScore = results.confidence_score || 0;
+    
     let html = `
         <div class="results-summary">
             <h4>Scan Summary</h4>
@@ -205,7 +210,25 @@ function displayResults(results) {
                         ${results.overall_risk_score || 0}/10
                     </span>
                 </div>
+                <div class="summary-item">
+                    <strong>Validation Status:</strong>
+                    <span class="badge badge-${validationStatus === 'validated' ? 'success' : validationStatus === 'false_positive' ? 'error' : 'info'}">
+                        ${validationStatus === 'validated' ? '✓ Validated' : validationStatus === 'false_positive' ? '⚠ False Positive' : 'Pending'}
+                    </span>
+                </div>
+                <div class="summary-item">
+                    <strong>Confidence Score:</strong>
+                    <span>${confidenceScore}%</span>
+                </div>
             </div>
+            ${complianceTags.length > 0 ? `
+            <div class="compliance-section">
+                <strong>Compliance Standards:</strong>
+                <div class="compliance-badges">
+                    ${complianceTags.map(tag => `<span class="badge badge-compliance">${tag}</span>`).join('')}
+                </div>
+            </div>
+            ` : ''}
         </div>
         
         <h4>Vulnerabilities Found</h4>
@@ -214,13 +237,18 @@ function displayResults(results) {
     
     if (results.vulnerabilities && results.vulnerabilities.length > 0) {
         results.vulnerabilities.forEach((vuln, index) => {
+            const isFalsePositive = vuln.false_positive || false;
+            
             html += `
-                <div class="vulnerability-card">
+                <div class="vulnerability-card ${isFalsePositive ? 'false-positive' : ''}">
                     <div class="vuln-header">
                         <h5>${index + 1}. ${vuln.name}</h5>
-                        <span class="badge badge-${getSeverityBadge(vuln.cvss_severity)}">
-                            ${vuln.cvss_severity || 'MEDIUM'}
-                        </span>
+                        <div class="badges-group">
+                            <span class="badge badge-${getSeverityBadge(vuln.cvss_severity)}">
+                                ${vuln.cvss_severity || 'MEDIUM'}
+                            </span>
+                            ${isFalsePositive ? '<span class="badge badge-error">⚠ False Positive</span>' : ''}
+                        </div>
                     </div>
                     <div class="vuln-details">
                         <p><strong>URL:</strong> <code>${vuln.url || 'N/A'}</code></p>
@@ -228,6 +256,11 @@ function displayResults(results) {
                         <p><strong>CVSS Score:</strong> ${vuln.cvss_score || 'N/A'}</p>
                         <p><strong>Description:</strong> ${vuln.description || 'No description'}</p>
                         <p><strong>Impact:</strong> ${vuln.impact || 'No impact information'}</p>
+                        ${vuln.compliance_tags && vuln.compliance_tags.length > 0 ? `
+                        <p><strong>Compliance:</strong> 
+                            ${vuln.compliance_tags.map(tag => `<span class="badge badge-compliance">${tag}</span>`).join('')}
+                        </p>
+                        ` : ''}
                         
                         ${vuln.remediation ? `
                         <details open>
@@ -257,6 +290,14 @@ function displayResults(results) {
                                 <p class="warning-note">🔒 <em>Never use this on unauthorized systems. Illegal activity will be prosecuted.</em></p>
                             </div>
                         </details>
+                        ` : ''}
+                        
+                        ${!isFalsePositive ? `
+                        <div class="actions">
+                            <button class="btn btn-small btn-warning" onclick="markFalsePositive('${results.id}', ${index}, 'User marked as false positive')">
+                                ⚠ Mark as False Positive
+                            </button>
+                        </div>
                         ` : ''}
                         
                         ${vuln.references && vuln.references.length > 0 ? `
@@ -367,6 +408,46 @@ style.textContent = `
         background: #dee2e6;
         margin-bottom: 10px;
     }
+    
+    .compliance-section {
+        margin-top: 15px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    
+    .compliance-badges {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+    }
+    
+    .badge-compliance {
+        background: #6f42c1;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .badges-group {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    
+    .vulnerability-card.false-positive {
+        opacity: 0.6;
+        background: #f8f9fa;
+    }
+    
+    .actions {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #dee2e6;
+    }
 `;
 document.head.appendChild(style);
 
@@ -393,6 +474,66 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('noScans').classList.remove('hidden');
     }
 });
+
+// Generate report function
+async function generateReport(jobId, formatType) {
+    try {
+        const response = await fetch(`/api/report/${jobId}?format=${formatType}`, {
+            method: 'GET'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            if (formatType === 'html') {
+                window.open(data.view_url, '_blank');
+                showNotification('HTML report generated successfully!', 'success');
+            } else {
+                // For PDF, create download link
+                const link = document.createElement('a');
+                link.href = data.download_url;
+                link.download = `report_${jobId}.pdf`;
+                link.click();
+                showNotification('PDF report generated successfully!', 'success');
+            }
+        } else {
+            showNotification(`Error generating report: ${data.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error generating report:', error);
+        showNotification('Failed to generate report', 'error');
+    }
+}
+
+// Mark vulnerability as false positive
+async function markFalsePositive(jobId, vulnIndex, reason) {
+    try {
+        const response = await fetch('/api/mark-false-positive', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                job_id: jobId,
+                vuln_index: vulnIndex,
+                reason: reason || 'User marked as false positive'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showNotification('Vulnerability marked as false positive', 'success');
+            // Refresh results to show updated status
+            viewResults(jobId);
+        } else {
+            showNotification(`Error: ${data.error || 'Failed to mark as false positive'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error marking false positive:', error);
+        showNotification('Failed to mark as false positive', 'error');
+    }
+}
 
 // Auto-refresh running scans every 30 seconds
 setInterval(async () => {
