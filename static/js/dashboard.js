@@ -26,6 +26,10 @@ document.getElementById('scanForm')?.addEventListener('submit', async (e) => {
     
     const targetUrl = document.getElementById('targetUrl').value;
     const scanMode = document.getElementById('scanMode').value;
+    const externalScanners = document.getElementById('externalScanners').value;
+    
+    // Map external scanner selection to boolean or specific scanners
+    const useExternalScanners = externalScanners !== 'none';
     
     try {
         const response = await fetch('/api/scan/start', {
@@ -35,7 +39,9 @@ document.getElementById('scanForm')?.addEventListener('submit', async (e) => {
             },
             body: JSON.stringify({
                 url: targetUrl,
-                mode: scanMode
+                mode: scanMode,
+                use_external_scanners: useExternalScanners,
+                external_scanner_type: externalScanners
             })
         });
         
@@ -44,6 +50,12 @@ document.getElementById('scanForm')?.addEventListener('submit', async (e) => {
         if (response.ok) {
             currentJobId = data.job_id;
             showProgress();
+            
+            // Subscribe to WebSocket updates for this scan
+            if (socket) {
+                socket.emit('subscribe_scan', { job_id: data.job_id });
+            }
+            
             monitorScan(data.job_id);
         } else {
             alert('Error starting scan: ' + data.error);
@@ -73,6 +85,45 @@ function updateProgress(data) {
     if (progressText && data.activity) {
         progressText.textContent = data.activity;
     }
+    
+    // Update realtime log if available
+    if (data.log_entry) {
+        addLogEntry(data.log_entry);
+    }
+}
+
+// Add log entry to realtime log
+function addLogEntry(logEntry) {
+    const logDiv = document.getElementById('realtimeLog');
+    const logContent = document.getElementById('logContent');
+    
+    if (!logDiv || !logContent) return;
+    
+    // Show the log section
+    logDiv.classList.remove('hidden');
+    
+    // Create log entry element
+    const entryDiv = document.createElement('div');
+    entryDiv.className = 'log-entry';
+    
+    const timestamp = logEntry.timestamp ? new Date(logEntry.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    const level = logEntry.level || 'info';
+    const message = logEntry.message || logEntry.activity || 'Processing...';
+    
+    entryDiv.innerHTML = `
+        <span class="log-timestamp">[${timestamp}]</span>
+        <span class="log-${level}">${message}</span>
+    `;
+    
+    logContent.appendChild(entryDiv);
+    
+    // Auto-scroll to bottom
+    logContent.scrollTop = logContent.scrollHeight;
+    
+    // Keep only last 50 entries to avoid performance issues
+    while (logContent.children.length > 50) {
+        logContent.removeChild(logContent.firstChild);
+    }
 }
 
 // Monitor scan status
@@ -90,6 +141,14 @@ async function monitorScan(jobId) {
                     percentage: data.progress,
                     activity: data.current_activity || 'Scanning...'
                 });
+                
+                // Process realtime log entries if available
+                if (data.realtime_log && Array.isArray(data.realtime_log)) {
+                    // Only show the latest entries that haven't been shown yet
+                    data.realtime_log.slice(-5).forEach(logEntry => {
+                        addLogEntry(logEntry);
+                    });
+                }
                 
                 // Check if completed
                 if (data.status === 'COMPLETED') {
@@ -170,17 +229,33 @@ function displayResults(results) {
                         <p><strong>Description:</strong> ${vuln.description || 'No description'}</p>
                         <p><strong>Impact:</strong> ${vuln.impact || 'No impact information'}</p>
                         
-                        ${vuln.exploitation ? `
-                        <details>
-                            <summary><strong>⚠️ How to Exploit (Educational Purpose Only)</strong></summary>
-                            <pre><code>${escapeHtml(vuln.exploitation)}</code></pre>
-                        </details>
-                        ` : ''}
-                        
                         ${vuln.remediation ? `
                         <details open>
                             <summary><strong>✅ How to Fix</strong></summary>
                             <div class="remediation">${formatRemediation(vuln.remediation)}</div>
+                        </details>
+                        ` : ''}
+                        
+                        ${vuln.safe_poc ? `
+                        <details>
+                            <summary><strong>🔬 Safe Proof of Concept (PoC)</strong></summary>
+                            <div class="poc-section">
+                                <p><strong>Purpose:</strong> ${vuln.poc_purpose || 'Verification only - safe payload'}</p>
+                                <p><strong>Impact:</strong> ${vuln.poc_impact || 'Demonstrates vulnerability without causing harm'}</p>
+                                <pre><code>${escapeHtml(vuln.safe_poc)}</code></pre>
+                                <p class="warning-note">⚠️ <em>Only use on systems you own or have explicit permission to test.</em></p>
+                            </div>
+                        </details>
+                        ` : ''}
+                        
+                        ${vuln.exploitation ? `
+                        <details>
+                            <summary><strong>⚠️ Exploitation Example (Educational Only)</strong></summary>
+                            <div class="exploitation-section">
+                                <p><strong>Warning:</strong> This is for educational purposes to understand the attack vector.</p>
+                                <pre><code>${escapeHtml(vuln.exploitation)}</code></pre>
+                                <p class="warning-note">🔒 <em>Never use this on unauthorized systems. Illegal activity will be prosecuted.</em></p>
+                            </div>
                         </details>
                         ` : ''}
                         
@@ -246,6 +321,54 @@ function formatRemediation(remediation) {
     }
     return `<p>${remediation}</p>`;
 }
+
+// Add CSS styles for PoC and Exploitation sections dynamically
+const style = document.createElement('style');
+style.textContent = `
+    .poc-section, .exploitation-section {
+        background: #f8f9fa;
+        border-left: 4px solid #17a2b8;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    
+    .exploitation-section {
+        border-left-color: #dc3545;
+        background: #fff5f5;
+    }
+    
+    .warning-note {
+        color: #856404;
+        font-style: italic;
+        margin-top: 10px;
+        padding: 8px;
+        background: #fff3cd;
+        border-radius: 4px;
+    }
+    
+    .remediation {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    
+    details > summary {
+        cursor: pointer;
+        padding: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        margin: 5px 0;
+    }
+    
+    details[open] > summary {
+        background: #dee2e6;
+        margin-bottom: 10px;
+    }
+`;
+document.head.appendChild(style);
 
 // Close modal
 function closeModal() {

@@ -56,6 +56,100 @@ class VulnerabilityScanner:
             'express': {'vulnerable_versions': ['<4.17.3'], 'cve': 'CVE-2022-24999', 'severity': 'MEDIUM'}
         }
     
+    def _get_remediation_and_poc(self, vuln_type: str, details: str, url: str, param: str = None) -> Dict:
+        """Get remediation steps and safe proof-of-concept for vulnerabilities"""
+        remediation_db = {
+            'SQL Injection': {
+                'remediation': '''1. Gunakan Prepared Statements/Parameterized Queries
+2. Implementasi input validation dan sanitization
+3. Gunakan ORM (Object-Relational Mapping) seperti SQLAlchemy
+4. Terapkan principle of least privilege untuk database user
+5. Enable WAF (Web Application Firewall)''',
+                'safe_poc': f"Payload verifikasi aman: ' OR '1'='1 (JANGAN dieksekusi di production)\nVerifikasi: Jika response berubah saat payload ditambahkan ke parameter '{param or 'query'}', maka rentan.",
+                'impact': 'Attacker dapat membaca, mengubah, atau menghapus seluruh database. Dapat menyebabkan data breach masif.'
+            },
+            'XSS': {
+                'remediation': '''1. Encode semua output yang berasal dari user input
+2. Gunakan Content Security Policy (CSP) header
+3. Implementasi input validation ketat
+4. Gunakan framework dengan auto-escaping (React, Vue, Angular)
+5. Sanitize HTML input dengan library seperti DOMPurify''',
+                'safe_poc': f"Payload verifikasi: <script>alert('XSS')</script>\nVerifikasi: Jika alert muncul saat input dimasukkan ke parameter '{param or 'input'}', maka rentan.",
+                'impact': 'Attacker dapat mencuri session cookies, redirect user ke situs phishing, atau mengambil alih akun user.'
+            },
+            'Missing Security Header': {
+                'remediation': f'''1. Tambahkan header berikut di web server atau aplikasi:
+   - Strict-Transport-Security: max-age=31536000; includeSubDomains
+   - Content-Security-Policy: default-src 'self'
+   - X-Frame-Options: DENY
+   - X-Content-Type-Options: nosniff
+   - Referrer-Policy: strict-origin-when-cross-origin
+2. Gunakan middleware security seperti helmet.js (Node.js) atau Flask-Talisman (Python)''',
+                'safe_poc': "Verifikasi: Cek response headers menggunakan browser DevTools atau curl -I {url}\nJika header tidak ada, maka rentan.",
+                'impact': 'Situs rentan terhadap clickjacking, XSS, MIME sniffing, dan protocol downgrade attacks.'
+            },
+            'Data Leakage': {
+                'remediation': '''1. Hapus sensitive data dari source code dan logs
+2. Encrypt data sensitif di rest dan transit
+3. Implementasi access control ketat
+4. Gunakan secret management tools (HashiCorp Vault, AWS Secrets Manager)
+5. Audit dan monitoring akses data sensitif''',
+                'safe_poc': f"Verifikasi: Akses halaman {url} dan lihat apakah terdapat email, phone number, API keys, atau credit card numbers yang terekspos.",
+                'impact': 'Data sensitif seperti PII, credentials, atau financial data dapat diakses attacker. Dapat menyebabkan compliance violation (GDPR, PCI-DSS).'
+            },
+            'Outdated Dependency': {
+                'remediation': '''1. Update dependency ke versi terbaru yang aman
+2. Gunakan tools seperti npm audit, pip-audit, atau Dependabot
+3. Implementasi automated dependency scanning di CI/CD
+4. Pin versi dependency di package.json/requirements.txt
+5. Subscribe ke security advisory dari vendor''',
+                'safe_poc': f"Verifikasi: Cek versi dependency di {url}. Bandingkan dengan CVE database.\nJika versi < versi aman yang direkomendasikan, maka rentan.",
+                'impact': 'Known vulnerabilities dapat dieksploitasi attacker. Dapat menyebabkan remote code execution atau data breach.'
+            },
+            'Directory Traversal': {
+                'remediation': '''1. Validasi dan sanitize file paths
+2. Gunakan chroot jail atau containerization
+3. Implementasi whitelist untuk file yang dapat diakses
+4. Disable directory listing di web server
+5. Gunakan fungsi basename() untuk extract filename saja''',
+                'safe_poc': f"Payload verifikasi: ../../etc/passwd\nVerifikasi: Jika content file sistem terlihat di response parameter '{param or 'file'}', maka rentan.",
+                'impact': 'Attacker dapat membaca file sensitif di server seperti /etc/passwd, config files, atau source code.'
+            },
+            'Subdomain Takeover': {
+                'remediation': '''1. Hapus DNS records untuk subdomain yang tidak digunakan
+2. Audit regularly DNS records dan third-party services
+3. Gunakan monitoring tools untuk detect dangling DNS
+4. Claim subdomain di third-party services sebelum attacker melakukannya
+5. Implementasi automated DNS monitoring''',
+                'safe_poc': f"Verifikasi: Coba akses subdomain yang ditemukan. Jika menampilkan 'site not found' atau error dari third-party (GitHub Pages, Heroku, dll), maka berpotensi takeover.",
+                'impact': 'Attacker dapat mengambil alih subdomain dan digunakan untuk phishing, malware distribution, atau bypass security controls.'
+            },
+            'Open Redirect': {
+                'remediation': '''1. Validasi URL redirect terhadap whitelist domain
+2. Gunakan relative path untuk redirect internal
+3. Implementasi user confirmation untuk redirect eksternal
+4. Hindari menggunakan user input langsung untuk redirect
+5. Gunakan token-based redirect mechanism''',
+                'safe_poc': f"Payload verifikasi: ?redirect=http://evil.com\nVerifikasi: Jika di-redirect ke domain eksternal tanpa warning, maka rentan.",
+                'impact': 'Digunakan untuk phishing attacks dengan membuat link yang terlihat legitimate tapi redirect ke situs malicious.'
+            }
+        }
+        
+        # Default remediation jika type tidak ada di database
+        default = {
+            'remediation': 'Lakukan security review dan implementasi best practices sesuai jenis kerentanan.',
+            'safe_poc': 'Verifikasi manual diperlukan untuk konfirmasi temuan ini.',
+            'impact': 'Dampak bervariasi tergantung konteks aplikasi dan kerentanan spesifik.'
+        }
+        
+        result = remediation_db.get(vuln_type, default)
+        
+        # Customize dengan info spesifik
+        customized = result.copy()
+        customized['safe_poc'] = customized['safe_poc'].format(url=url, param=param or 'query')
+        
+        return customized
+    
     def _calculate_cvss(self, vuln_type: str) -> float:
         """Calculate CVSS score based on vulnerability type"""
         cvss_scores = {
@@ -130,6 +224,7 @@ class VulnerabilityScanner:
                     clean_version = version.replace('^', '').replace('~', '')
                     if pkg.lower() in self.cve_database:
                         cve_info = self.cve_database[pkg.lower()]
+                        remediation_poc = self._get_remediation_and_poc('Outdated Dependency', f"Version {clean_version} may be vulnerable", url, pkg)
                         vulnerabilities.append({
                             'type': 'Outdated Dependency',
                             'url': url,
@@ -138,7 +233,10 @@ class VulnerabilityScanner:
                             'cvss': self._calculate_cvss('Outdated Dependency'),
                             'severity': self._get_severity(8.0),
                             'cve': cve_info.get('cve'),
-                            'compliance': ['PCI_DSS', 'OWASP_TOP_10']
+                            'compliance': ['PCI_DSS', 'OWASP_TOP_10'],
+                            'remediation': remediation_poc['remediation'],
+                            'safe_poc': remediation_poc['safe_poc'],
+                            'impact_analysis': remediation_poc['impact']
                         })
             except Exception:
                 pass
@@ -153,6 +251,7 @@ class VulnerabilityScanner:
                         pkg, version = parts
                         if pkg.lower() in self.cve_database:
                             cve_info = self.cve_database[pkg.lower()]
+                            remediation_poc = self._get_remediation_and_poc('Outdated Dependency', f"Version {version} may be vulnerable", url, pkg)
                             vulnerabilities.append({
                                 'type': 'Outdated Dependency',
                                 'url': url,
@@ -161,7 +260,10 @@ class VulnerabilityScanner:
                                 'cvss': self._calculate_cvss('Outdated Dependency'),
                                 'severity': self._get_severity(7.5),
                                 'cve': cve_info.get('cve'),
-                                'compliance': ['PCI_DSS', 'OWASP_TOP_10']
+                                'compliance': ['PCI_DSS', 'OWASP_TOP_10'],
+                                'remediation': remediation_poc['remediation'],
+                                'safe_poc': remediation_poc['safe_poc'],
+                                'impact_analysis': remediation_poc['impact']
                             })
         
         # Check HTML for framework versions
@@ -206,6 +308,7 @@ class VulnerabilityScanner:
             if matches:
                 # Limit to first 5 matches to avoid noise
                 sample_matches = list(set(matches))[:5]
+                remediation_poc = self._get_remediation_and_poc('Data Leakage', f"Found {len(matches)} potential {data_type}", url, data_type)
                 vulnerabilities.append({
                     'type': 'Data Leakage',
                     'url': url,
@@ -214,7 +317,10 @@ class VulnerabilityScanner:
                     'evidence': sample_matches,
                     'cvss': self._calculate_cvss('Data Leakage'),
                     'severity': self._get_severity(8.0),
-                    'compliance': ['GDPR', 'PCI_DSS', 'OWASP_TOP_10']
+                    'compliance': ['GDPR', 'PCI_DSS', 'OWASP_TOP_10'],
+                    'remediation': remediation_poc['remediation'],
+                    'safe_poc': remediation_poc['safe_poc'],
+                    'impact_analysis': remediation_poc['impact']
                 })
         
         return vulnerabilities
@@ -259,6 +365,7 @@ class VulnerabilityScanner:
         
         for header, info in required_headers.items():
             if header not in headers:
+                remediation_poc = self._get_remediation_and_poc('Missing Security Header', info['description'], response.url, header)
                 vulnerabilities.append({
                     'type': 'Missing Security Header',
                     'url': response.url,
@@ -266,7 +373,10 @@ class VulnerabilityScanner:
                     'details': info['description'],
                     'cvss': info['cvss'],
                     'severity': self._get_severity(info['cvss']),
-                    'compliance': info['compliance']
+                    'compliance': info['compliance'],
+                    'remediation': remediation_poc['remediation'],
+                    'safe_poc': remediation_poc['safe_poc'],
+                    'impact_analysis': remediation_poc['impact']
                 })
         
         return vulnerabilities
@@ -300,6 +410,7 @@ class VulnerabilityScanner:
                     ]
                     
                     if any(indicator.lower() in response.text.lower() for indicator in error_indicators):
+                        remediation_poc = self._get_remediation_and_poc('SQL Injection', f"Potential SQL Injection via parameter '{param}'", url, param)
                         vulnerabilities.append({
                             'type': 'SQL Injection',
                             'url': url,
@@ -308,7 +419,10 @@ class VulnerabilityScanner:
                             'payload': payload,
                             'cvss': self._calculate_cvss('SQL Injection'),
                             'severity': self._get_severity(9.8),
-                            'compliance': ['OWASP_TOP_10', 'PCI_DSS']
+                            'compliance': ['OWASP_TOP_10', 'PCI_DSS'],
+                            'remediation': remediation_poc['remediation'],
+                            'safe_poc': remediation_poc['safe_poc'],
+                            'impact_analysis': remediation_poc['impact']
                         })
                         break  # One vulnerability per parameter is enough
                 except Exception:
