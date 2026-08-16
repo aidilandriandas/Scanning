@@ -573,31 +573,46 @@ print(f"Headers: {{dict(response.headers)}}")
 print("\\nPlease manually verify this finding.")
 """
     
-    def scan(self) -> Dict[str, Any]:
-        """Main scanning function"""
+    def scan(self, progress_callback=None) -> Dict[str, Any]:
+        """Main scanning function with optional progress callback"""
         start_time = datetime.now()
+        
+        # Helper to send progress updates
+        def send_progress(activity: str, percentage: int):
+            if progress_callback:
+                progress_callback({
+                    'activity': activity,
+                    'percentage': percentage,
+                    'timestamp': datetime.now().isoformat()
+                })
         
         try:
             # Step 1: Subdomain Enumeration (if enabled)
             if self.discover_subdomains:
+                send_progress("Enumerating subdomains...", 5)
                 self.enumerate_subdomains()
             
             # Step 2: Initial request
+            send_progress(f"Connecting to {self.target_url}...", 10)
             response = self.session.get(self.target_url, timeout=10)
             
             # Step 3: Check security headers
+            send_progress("Checking security headers...", 20)
             header_vulns = self.check_security_headers(response)
             self.vulnerabilities.extend(header_vulns)
             
             # Step 4: Analyze content for data leakage
+            send_progress("Analyzing for data leakage...", 30)
             leakage_vulns = self.detect_data_leakage(response.text, self.target_url)
             self.vulnerabilities.extend(leakage_vulns)
             
             # Step 5: SCA - Check dependencies
+            send_progress("Checking dependencies (SCA)...", 40)
             sca_vulns = self.analyze_dependencies_sca(response.text, self.target_url)
             self.vulnerabilities.extend(sca_vulns)
             
             # Step 6: Extract forms and parameters
+            send_progress("Extracting forms and parameters...", 50)
             soup = BeautifulSoup(response.text, 'html.parser')
             forms = soup.find_all('form')
             params = {}
@@ -610,25 +625,33 @@ print("\\nPlease manually verify this finding.")
             
             # Step 7: Test for SQL Injection and XSS (if active tests enabled)
             if self.active_tests and params:
+                send_progress("Testing for SQL Injection...", 60)
                 sql_vulns = self.test_sql_injection(self.target_url, params)
                 self.vulnerabilities.extend(sql_vulns)
                 
+                send_progress("Testing for XSS...", 70)
                 xss_vulns = self.test_xss(self.target_url, params)
                 self.vulnerabilities.extend(xss_vulns)
             
             # Step 8: AI Analysis (if enabled)
             if self.enable_ai:
+                send_progress("Running AI analysis...", 80)
                 for i, vuln in enumerate(self.vulnerabilities):
                     self.vulnerabilities[i] = self.analyze_with_ai(vuln)
             
             # Step 9: Build attack graph
+            send_progress("Building attack graph...", 85)
             self.attack_graph = self.build_attack_graph(self.vulnerabilities)
             
             # Step 10: Compliance check
+            send_progress("Checking compliance standards...", 90)
             compliance_results = self.check_compliance(self.vulnerabilities)
             
+            send_progress("Finalizing report...", 95)
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
+            
+            send_progress("Scan completed!", 100)
             
             return {
                 'target': self.target_url,
@@ -655,6 +678,13 @@ print("\\nPlease manually verify this finding.")
             }
             
         except Exception as e:
+            if progress_callback:
+                progress_callback({
+                    'activity': f'Error: {str(e)}',
+                    'percentage': 0,
+                    'timestamp': datetime.now().isoformat(),
+                    'error': True
+                })
             return {
                 'error': str(e),
                 'target': self.target_url,
