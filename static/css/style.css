@@ -352,6 +352,68 @@ body {
     color: #999;
 }
 
+/* Real-time Log */
+.realtime-log {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #1e293b;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+.realtime-log h4 {
+    margin-bottom: 0.75rem;
+    color: #60a5fa;
+    font-size: 0.95rem;
+}
+
+.log-content {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0f172a;
+    padding: 0.75rem;
+    border-radius: 4px;
+}
+
+.log-entry {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #334155;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-timestamp {
+    color: #94a3b8;
+    margin-right: 0.5rem;
+}
+
+.log-info {
+    color: #60a5fa;
+}
+
+.log-warning {
+    color: #fbbf24;
+}
+
+.log-error {
+    color: #f87171;
+}
+
+.log-success {
+    color: #34d399;
+}
+
+/* Scanner badges container */
+.scanner-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .form-row {
