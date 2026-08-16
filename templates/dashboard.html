@@ -74,6 +74,8 @@
                             <th>Mode</th>
                             <th>External Scanners</th>
                             <th>Status</th>
+                            <th>Validation</th>
+                            <th>Compliance</th>
                             <th>Vulnerabilities</th>
                             <th>Risk Score</th>
                             <th>Started</th>
@@ -111,6 +113,29 @@
                                     {{ scan.status }}
                                 </span>
                             </td>
+                            <td>
+                                {% if scan.validation_status == 'validated' %}
+                                <span class="badge badge-success" title="Confidence: {{ scan.confidence_score }}%">✓ Validated</span>
+                                {% elif scan.validation_status == 'false_positive' %}
+                                <span class="badge badge-error">⚠ False Positive</span>
+                                {% else %}
+                                <span class="badge badge-info">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if scan.compliance_tags and scan.compliance_tags|length > 0 %}
+                                <div class="compliance-badges">
+                                    {% for tag in scan.compliance_tags[:3] %}
+                                    <span class="badge badge-compliance" title="{{ tag }}">{{ tag }}</span>
+                                    {% endfor %}
+                                    {% if scan.compliance_tags|length > 3 %}
+                                    <span class="badge badge-compliance">+{{ scan.compliance_tags|length - 3 }}</span>
+                                    {% endif %}
+                                </div>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
                             <td>{{ scan.vulnerability_count }}</td>
                             <td>
                                 <span class="risk-score risk-{{ 
@@ -125,9 +150,17 @@
                             <td>{{ scan.started_at.strftime('%Y-%m-%d %H:%M') if scan.started_at else '-' }}</td>
                             <td>
                                 {% if scan.status == 'COMPLETED' %}
-                                <button class="btn btn-small btn-view" onclick="viewResults('{{ scan.id }}')">
-                                    View Results
-                                </button>
+                                <div class="btn-group">
+                                    <button class="btn btn-small btn-view" onclick="viewResults('{{ scan.id }}')">
+                                        View Results
+                                    </button>
+                                    <button class="btn btn-small btn-secondary" onclick="generateReport('{{ scan.id }}', 'html')" title="Generate HTML Report">
+                                        📄 HTML
+                                    </button>
+                                    <button class="btn btn-small btn-secondary" onclick="generateReport('{{ scan.id }}', 'pdf')" title="Generate PDF Report">
+                                        📑 PDF
+                                    </button>
+                                </div>
                                 {% elif scan.status == 'RUNNING' %}
                                 <button class="btn btn-small btn-monitor" onclick="monitorScan('{{ scan.id }}')">
                                     Monitor
