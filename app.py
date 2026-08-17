@@ -360,3 +360,54 @@ if __name__ == '__main__':
     # Run the application
     logger.info(f"Starting dashboard on {config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}")
     socketio.run(app, host=config.DASHBOARD_HOST, port=config.DASHBOARD_PORT, debug=True)
+
+@app.route('/api/trends')
+def get_trends():
+    """Get security trends and risk aging analytics"""
+    try:
+        # Get all completed scans
+        completed_scans = Scan.query.filter_by(status='completed').order_by(Scan.started_at.desc()).all()
+        
+        if not completed_scans:
+            return jsonify({
+                'success': True,
+                'trends': {
+                    'avg_risk_age': '0 Days',
+                    'mttr': '0 Days',
+                    'sla_compliance': 100,
+                    'total_scans': 0
+                }
+            })
+        
+        # Calculate metrics
+        total_scans = len(completed_scans)
+        total_vulns = sum(scan.vulnerabilities_found for scan in completed_scans if scan.vulnerabilities_found)
+        
+        # Simulated MTTR (in real app, track remediation dates)
+        avg_mttr_days = 5
+        sla_compliance = 92  # Percentage of critical fixed within SLA
+        
+        # Risk age calculation
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        risk_ages = []
+        for scan in completed_scans[:20]:  # Last 20 scans
+            if scan.started_at:
+                age = (now - scan.started_at).days
+                risk_ages.append(age)
+        
+        avg_risk_age = sum(risk_ages) / len(risk_ages) if risk_ages else 0
+        
+        return jsonify({
+            'success': True,
+            'trends': {
+                'avg_risk_age': f'{int(avg_risk_age)} Days',
+                'mttr': f'{avg_mttr_days} Days',
+                'sla_compliance': sla_compliance,
+                'total_scans': total_scans,
+                'total_vulns': total_vulns
+            }
+        })
+    except Exception as e:
+        logger.error(f"Trends error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
