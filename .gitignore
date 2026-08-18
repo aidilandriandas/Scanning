@@ -1,32 +1,16 @@
-```gitignore
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.py~
-
-# Dependencies
-venv/
-env/
+```
+# Environment variables
 .env
 .env.local
-.env.*
+*.env.*
 
-# Database
-instance/scanner.db
-
-# Logs and temp files
-*.log
+# Temporary files
 *.tmp
 *.swp
 
-# Editors
-.vscode/
-.idea/
+# Logs
+*.log
 
-# Coverage
-.coverage
-htmlcov/
-coverage/
+# Cookies file (likely generated/temporary)
+cookies.txt
 ```

@@ -137,9 +137,9 @@ def logout():
 @app.route('/api/scan/start', methods=['POST'])
 @login_required
 def start_scan():
-    """Start a new scan job"""
+    """Start a new scan job (legacy endpoint)"""
     data = request.get_json()
-    target_url = data.get('url')
+    target_url = data.get('url') or data.get('target')
     scan_mode = data.get('mode', 'safe')
     use_external = data.get('use_external_scanners', False)
     
@@ -174,6 +174,183 @@ def start_scan():
         'status': 'started',
         'message': f'Scan started for {target_url}',
         'external_scanners': use_external
+    })
+
+
+@app.route('/api/scan/web', methods=['POST'])
+@login_required
+def start_web_scan():
+    """Start web vulnerability scan"""
+    data = request.get_json()
+    target = data.get('target')
+    auth_token = data.get('auth_token')
+    
+    if not target:
+        return jsonify({'error': 'Target URL is required'}), 400
+    
+    if not target.startswith(('http://', 'https://')):
+        target = 'https://' + target
+    
+    user_record = User.query.filter_by(telegram_id=str(current_user.id)).first()
+    if not user_record:
+        return jsonify({'error': 'User not found'}), 404
+    
+    audit_log = AuditLog(
+        user_id=user_record.id,
+        action='WEB_SCAN_STARTED',
+        target=target,
+        details={'auth_token': auth_token[:10] + '...' if auth_token else None},
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+    db.session.commit()
+    
+    task = run_scan_task.delay(target, user_record.id, 'web', False)
+    
+    return jsonify({
+        'job_id': task.id,
+        'status': 'started',
+        'message': f'Web scan started for {target}'
+    })
+
+
+@app.route('/api/scan/api', methods=['POST'])
+@login_required
+def start_api_scan():
+    """Start API security scan"""
+    data = request.get_json()
+    target = data.get('target')
+    auth_token = data.get('auth_token')
+    spec_url = data.get('spec_url')
+    
+    if not target:
+        return jsonify({'error': 'API Base URL is required'}), 400
+    
+    if not target.startswith(('http://', 'https://')):
+        target = 'https://' + target
+    
+    user_record = User.query.filter_by(telegram_id=str(current_user.id)).first()
+    if not user_record:
+        return jsonify({'error': 'User not found'}), 404
+    
+    audit_log = AuditLog(
+        user_id=user_record.id,
+        action='API_SCAN_STARTED',
+        target=target,
+        details={'spec_url': spec_url, 'has_auth': bool(auth_token)},
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+    db.session.commit()
+    
+    task = run_scan_task.delay(target, user_record.id, 'api', False)
+    
+    return jsonify({
+        'job_id': task.id,
+        'status': 'started',
+        'message': f'API scan started for {target}'
+    })
+
+
+@app.route('/api/scan/dynamic', methods=['POST'])
+@login_required
+def start_dynamic_scan():
+    """Start dynamic analysis scan"""
+    data = request.get_json()
+    target = data.get('target')
+    
+    if not target:
+        return jsonify({'error': 'Target URL is required'}), 400
+    
+    if not target.startswith(('http://', 'https://')):
+        target = 'https://' + target
+    
+    user_record = User.query.filter_by(telegram_id=str(current_user.id)).first()
+    if not user_record:
+        return jsonify({'error': 'User not found'}), 404
+    
+    audit_log = AuditLog(
+        user_id=user_record.id,
+        action='DYNAMIC_SCAN_STARTED',
+        target=target,
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+    db.session.commit()
+    
+    task = run_scan_task.delay(target, user_record.id, 'dynamic', False)
+    
+    return jsonify({
+        'job_id': task.id,
+        'status': 'started',
+        'message': f'Dynamic analysis started for {target}'
+    })
+
+
+@app.route('/api/scan/assets', methods=['POST'])
+@login_required
+def start_assets_scan():
+    """Start asset discovery scan"""
+    data = request.get_json()
+    domain = data.get('domain')
+    
+    if not domain:
+        return jsonify({'error': 'Domain is required'}), 400
+    
+    user_record = User.query.filter_by(telegram_id=str(current_user.id)).first()
+    if not user_record:
+        return jsonify({'error': 'User not found'}), 404
+    
+    audit_log = AuditLog(
+        user_id=user_record.id,
+        action='ASSETS_SCAN_STARTED',
+        target=domain,
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+    db.session.commit()
+    
+    task = run_scan_task.delay(domain, user_record.id, 'assets', False)
+    
+    return jsonify({
+        'job_id': task.id,
+        'status': 'started',
+        'message': f'Asset discovery started for {domain}'
+    })
+
+
+@app.route('/api/scan/logic', methods=['POST'])
+@login_required
+def start_logic_scan():
+    """Start business logic and PII scan"""
+    data = request.get_json()
+    target = data.get('target')
+    
+    if not target:
+        return jsonify({'error': 'Target URL is required'}), 400
+    
+    if not target.startswith(('http://', 'https://')):
+        target = 'https://' + target
+    
+    user_record = User.query.filter_by(telegram_id=str(current_user.id)).first()
+    if not user_record:
+        return jsonify({'error': 'User not found'}), 404
+    
+    audit_log = AuditLog(
+        user_id=user_record.id,
+        action='LOGIC_SCAN_STARTED',
+        target=target,
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+    db.session.commit()
+    
+    task = run_scan_task.delay(target, user_record.id, 'logic', False)
+    
+    return jsonify({
+        'job_id': task.id,
+        'status': 'started',
+        'message': f'Business logic scan started for {target}'
     })
 
 
